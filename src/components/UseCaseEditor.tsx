@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { extractTextFromFile, IMAGE_TOKENS_PER_PAGE, type ExtractKind } from '../lib/extractText';
 import { formatTokenCount } from '../lib/format';
 import {
   estimateTokens,
@@ -57,6 +58,12 @@ const METHOD_LABELS: Record<EstimateMethod, string> = {
   chars: 'Zeichen-Heuristik',
 };
 
+interface FileMeta {
+  name: string;
+  kind: ExtractKind;
+  pages?: number;
+}
+
 function TokenEstimator({
   onApply,
 }: {
@@ -67,6 +74,10 @@ function TokenEstimator({
   const [lang, setLang] = useState<EstimateLang>('de');
   // Track tokenizer readiness so the count refreshes once the lazy chunk loads.
   const [tokenizerReady, setTokenizerReady] = useState(false);
+  const [fileMeta, setFileMeta] = useState<FileMeta | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [fileError, setFileError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (method === 'tokenizer' && !tokenizerReady) {
@@ -74,20 +85,72 @@ function TokenEstimator({
     }
   }, [method, tokenizerReady]);
 
+  async function handleFile(file: File) {
+    setBusy(true);
+    setFileError(null);
+    try {
+      const { text: extracted, kind, pages } = await extractTextFromFile(file);
+      setText(extracted);
+      setFileMeta({ name: file.name, kind, pages });
+      // Ensure the exact tokenizer is loaded so the count is precise.
+      await loadTokenizer();
+      setTokenizerReady(true);
+    } catch {
+      setFileMeta(null);
+      setFileError('Datei konnte nicht gelesen werden. Unterstützt: PDF, Word (.docx), TXT/MD.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   // Setting tokenizerReady re-renders, so the estimate recomputes after lazy load.
   const tokens = estimateTokens(text, method, lang);
+  const imageTokens =
+    fileMeta?.kind === 'pdf' && fileMeta.pages ? fileMeta.pages * IMAGE_TOKENS_PER_PAGE : 0;
 
   return (
     <div className="rounded-lg border border-dashed border-border bg-surface-2/50 p-3">
       <div className="mb-2 flex items-center gap-1.5 text-sm font-medium text-muted">
-        Token aus Beispieltext schätzen
-        <InfoTooltip text="Füge einen typischen Prompt oder eine typische Antwort ein, um die Tokenanzahl zu schätzen. Der genaue Tokenizer ist auf OpenAI-Modelle geeicht und für Claude/Gemini eine gute Näherung." />
+        Token aus Datei oder Beispieltext messen
+        <InfoTooltip text="Lade eine Datei (PDF, Word, TXT) hoch oder füge Text ein. Der Inhalt wird nur lokal in deinem Browser verarbeitet – nichts wird hochgeladen. Der genaue Tokenizer ist auf OpenAI-Modelle geeicht und für Claude/Gemini eine gute Näherung." />
       </div>
+
+      {/* File picker */}
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf,.docx,.txt,.md,.csv,.json,text/*,application/pdf"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) void handleFile(f);
+            e.target.value = '';
+          }}
+        />
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={busy}
+          className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text transition-colors hover:border-primary hover:text-primary disabled:opacity-50"
+        >
+          📄 Datei auswählen (PDF / Word / TXT)
+        </button>
+        {busy && <span className="text-xs text-muted">Datei wird gelesen …</span>}
+        {fileMeta && !busy && (
+          <span className="text-xs text-muted">
+            {fileMeta.name}
+            {fileMeta.pages ? ` · ${fileMeta.pages} Seiten` : ''}
+          </span>
+        )}
+      </div>
+      {fileError && <p className="mb-2 text-xs text-danger">{fileError}</p>}
+
       <textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
         rows={3}
-        placeholder="Beispiel-Prompt oder -Antwort einfügen …"
+        placeholder="Datei auswählen oder Beispieltext einfügen …"
         className="w-full resize-y rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text outline-none focus:ring-1 focus:ring-primary"
       />
       <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
@@ -139,6 +202,24 @@ function TokenEstimator({
           → als Output
         </button>
       </div>
+      {imageTokens > 0 && (
+        <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-surface px-3 py-2 text-xs text-muted">
+          <span>
+            PDF mit {fileMeta?.pages} Seiten: Falls als <strong className="text-text">Bild</strong>{' '}
+            gesendet, kommen ca.{' '}
+            <strong className="text-text">{formatTokenCount(imageTokens)} Bild-Token</strong> hinzu
+            ({fileMeta?.pages} × ~{formatTokenCount(IMAGE_TOKENS_PER_PAGE)}).
+          </span>
+          <button
+            type="button"
+            onClick={() => onApply('input', tokens + imageTokens)}
+            className="rounded-lg border border-border px-2.5 py-1 font-medium text-text transition-colors hover:border-primary hover:text-primary"
+          >
+            → Text + Bild als Input
+          </button>
+          <InfoTooltip text="Manche Anbieter (z. B. Anthropic) verarbeiten PDF-Seiten zusätzlich als Bilder und berechnen dafür Bild-Token. Der genaue Wert ist anbieter- und auflösungsabhängig (~1.000–2.000 Token/Seite) – hier eine Näherung." />
+        </div>
+      )}
       {method !== 'tokenizer' && (
         <p className="mt-2 text-xs text-warning">
           Hinweis: Heuristiken sind nur Näherungen. Für verlässliche Werte – besonders bei
@@ -215,7 +296,7 @@ export function UseCaseEditor() {
             onClick={() => setShowEstimator((v) => !v)}
             className="text-sm font-medium text-primary hover:underline"
           >
-            {showEstimator ? '− Token-Schätzer ausblenden' : '+ Token aus Beispieltext schätzen'}
+            {showEstimator ? '− Token-Messer ausblenden' : '+ Token messen (Datei hochladen oder Text)'}
           </button>
           <button
             type="button"

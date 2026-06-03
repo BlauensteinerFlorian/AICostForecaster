@@ -9,8 +9,10 @@ geladen; der USD→EUR-Kurs stammt von der **EZB** (via [frankfurter.app](https:
 
 - **Token-basierte Kostenrechnung** – Input-/Output-Token × Volumen → Kosten pro
   Request, Monat und Jahr.
-- **Token-Schätzer** – Tokenanzahl aus eingefügtem Beispieltext (BPE-Tokenizer oder
-  Heuristik) ableiten.
+- **Token-Messer** – Tokenanzahl aus **Datei (PDF / Word / TXT)** oder eingefügtem
+  Beispieltext bestimmen (BPE-Tokenizer oder sprach-kalibrierte Heuristik). Dateien
+  werden rein lokal im Browser verarbeitet; bei PDFs zusätzlich Seitenzahl und
+  optionaler Bild-Token-Hinweis.
 - **Kuratierte Top-Modelle** je Anbieter (Top/Mittel/Budget: GPT-5.5, Claude
   Opus/Sonnet/Haiku, Gemini 3.1 Pro / 3.5 Flash …) **plus durchsuchbarer
   OpenRouter-Gesamtkatalog**.
