@@ -60,7 +60,7 @@ export function ResultsPanel() {
     <Section
       step={3}
       title="Ergebnisse"
-      info="Kosten = Input-Token × Input-Preis + Output-Token × Output-Preis, multipliziert mit den Requests pro Monat. Jahreswerte = Monat × 12. Umrechnung in EUR über den oben gesetzten Kurs."
+      info="Kosten je Request = (Input + System-/Tool-Overhead) × Input-Preis + (Output × Reasoning-Faktor) × Output-Preis, mal Calls/Request und Sicherheitsaufschlag. Das × Requests/Monat ergibt die Monatskosten; Jahr = Monat × 12. Umrechnung in EUR über den oben gesetzten Kurs."
       actions={<PeriodToggle />}
     >
       <div className="mb-5 h-64 w-full">

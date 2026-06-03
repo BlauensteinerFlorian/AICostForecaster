@@ -46,7 +46,8 @@ export function SourcesFooter() {
           </li>
           <li>
             <strong className="text-text">Token-Schätzung:</strong> BPE-Tokenizer (OpenAI
-            cl100k_base) bzw. Heuristiken; je Anbieter eine Näherung.
+            cl100k_base) bzw. sprach-kalibrierte Heuristiken (Deutsch ≈ Wörter × 1,8); je
+            Anbieter eine Näherung.
           </li>
           <li>
             <strong className="text-text">Fallback-Referenzpreise:</strong> Anbieter-Preisseiten,

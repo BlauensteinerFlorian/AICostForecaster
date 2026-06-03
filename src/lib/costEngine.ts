@@ -8,6 +8,29 @@ export interface UseCase {
   outputTokens: number;
   /** Expected number of requests per month. */
   requestsPerMonth: number;
+
+  // ── Optional "real world" overhead. All default to a no-op when absent so
+  //    older saved scenarios keep working unchanged. ───────────────────────────
+  /** Fixed tokens added to the input on every model call: system prompt, tool
+   *  definitions, few-shot examples, retrieved RAG context, etc. */
+  systemOverheadTokens?: number;
+  /** Model calls per request — agent steps, tool round-trips, retries. Default 1. */
+  callsPerRequest?: number;
+  /** Multiplier on output tokens for reasoning/"thinking" models (billed as
+   *  output). 1 = none, e.g. 3 = three times the visible answer. Default 1. */
+  reasoningFactor?: number;
+  /** Safety margin in percent applied to the total (language/variance buffer). */
+  bufferPct?: number;
+}
+
+/** Resolve the optional overhead fields to concrete, safe values. */
+export function resolveOverhead(useCase: UseCase) {
+  return {
+    systemOverheadTokens: Math.max(0, useCase.systemOverheadTokens ?? 0),
+    callsPerRequest: Math.max(1, useCase.callsPerRequest ?? 1),
+    reasoningFactor: Math.max(1, useCase.reasoningFactor ?? 1),
+    bufferPct: Math.max(0, useCase.bufferPct ?? 0),
+  };
 }
 
 export interface CostBreakdown {
@@ -19,14 +42,24 @@ export interface CostBreakdown {
   perYearEur: number;
 }
 
-/** Cost of a single request in USD for a given model and token profile. */
+/**
+ * Cost of one full request in USD, including all real-world overhead:
+ * system/tool tokens, multiple calls (agents/retries), reasoning output
+ * multiplier and a safety buffer. A "request" is one use-case execution as
+ * counted in `requestsPerMonth`; it may contain several model calls.
+ */
 export function costPerRequestUsd(
   model: Pick<NormalizedModel, 'inputPerMTok' | 'outputPerMTok'>,
-  useCase: Pick<UseCase, 'inputTokens' | 'outputTokens'>,
+  useCase: UseCase,
 ): number {
-  const input = (useCase.inputTokens / 1_000_000) * model.inputPerMTok;
-  const output = (useCase.outputTokens / 1_000_000) * model.outputPerMTok;
-  return input + output;
+  const { systemOverheadTokens, callsPerRequest, reasoningFactor, bufferPct } =
+    resolveOverhead(useCase);
+  const effectiveInput = useCase.inputTokens + systemOverheadTokens;
+  const effectiveOutput = useCase.outputTokens * reasoningFactor;
+  const perCall =
+    (effectiveInput / 1_000_000) * model.inputPerMTok +
+    (effectiveOutput / 1_000_000) * model.outputPerMTok;
+  return perCall * callsPerRequest * (1 + bufferPct / 100);
 }
 
 /** Full USD + EUR breakdown per request / month / year. */
