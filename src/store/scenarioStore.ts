@@ -34,6 +34,10 @@ const DEFAULT_USE_CASE: UseCase = {
   inputTokens: 1000,
   outputTokens: 500,
   requestsPerMonth: 10000,
+  systemOverheadTokens: 0,
+  callsPerRequest: 1,
+  reasoningFactor: 1,
+  bufferPct: 0,
 };
 
 function newId(): string {
